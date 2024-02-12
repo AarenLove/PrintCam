@@ -1,0 +1,24 @@
+[package]
+name = "printcam"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = "0.7.4"
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5.0", features = ["fs", "trace"] }
+
+tokio = { version = "1.36.0", features = ["full"] }
+
+image = "0.24.8"
+
+
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8.10"
+
+[dependencies.nokhwa]
+version = "0.10.4"
+# Use the native input backends, enable WGPU integration
+features = ["input-native", "output-threaded"] #, "output-wgpu"]
