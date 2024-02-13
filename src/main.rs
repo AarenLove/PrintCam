@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{borrow::Borrow, sync::Arc};
 
 use axum::{
     body::Body,
-    extract::State,
+    extract::{Path, State},
     response::{Html, IntoResponse, Response},
     routing::get,
 };
@@ -10,12 +10,11 @@ use axum::{
 use image::{ImageBuffer, ImageOutputFormat};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch::{self, Receiver};
-// use tower_http::services::{ServeDir, ServeFile};
 
 mod webcam;
 
 struct AppState {
-    image: Receiver<ImageBuffer<image::Rgb<u8>, Vec<u8>>>,
+    camera_list: Receiver<Vec<webcam::Camera>>,
     config: Configuration,
 }
 
@@ -30,7 +29,7 @@ struct Configuration {
 #[tokio::main]
 async fn main() {
     // Create a channel to send the image from the webcam to the webserver
-    let (image_tx, image_rx) = watch::channel(ImageBuffer::new(1, 1));
+    let (image_tx, image_rx) = watch::channel(Vec::new());
 
     let config_str =
         std::fs::read_to_string("config.toml").expect("Could not read config.toml file");
@@ -39,17 +38,16 @@ async fn main() {
     println!("Config: {:#?}", config);
 
     let state = Arc::new(AppState {
-        image: image_rx,
+        camera_list: image_rx,
         config,
     });
 
-    tokio::spawn(webcam::take_picture(state.clone(), image_tx));
+    tokio::spawn(webcam::setup_cameras(state.clone(), image_tx));
 
     let app = axum::Router::new()
-        // Add asset route
         // .nest_service("/assets", ServeDir::new("assets"))
         .route("/", get(root))
-        .route("/image", get(image))
+        .route("/image/:camera_index", get(image))
         .with_state(state);
 
     // run our app with hyper, listening globally on port 3000
@@ -68,29 +66,16 @@ async fn root(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     <script>
         let urlsToRevoke = [];
 
-        function getTextAfterLastSlash(str) {{
-            const lastSlashIndex = str.lastIndexOf("/");
-            if (lastSlashIndex !== -1) {{
-                return str.substring(lastSlashIndex + 1);
-            }} else {{
-                return str; // If there is no "/" in the string, return the original string
-            }}
-        }}
-
         function removeImage(imageUrl) {{
             // console.log('Revoking URL:', imageUrl);
             URL.revokeObjectURL(imageUrl)
-
-            // let uuid = getTextAfterLastSlash(imageUrl);
-            // console.log('Revoking uuid:', uuid);
-            // URL.revokeObjectURL(imageUrl)
         }}
 
         // Function to update the image
         async function updateImage() {{
             try {{
                 // Fetch the image from the server
-                const response = await fetch('/image');
+                const response = await fetch('/image/0');
                 const blob = await response.blob();
                 
                 // Create a URL for the blob
@@ -116,23 +101,34 @@ async fn root(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     </script>"###
     );
 
-    let html = empty_html_page(state, &html).await;
+    let html = empty_html_page(&html).await;
 
     Html(html).into_response()
 }
 
 // Get Request for in memory image
 // Image gets send to the client directly without saving it to disk
-async fn image(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn image(
+    State(state): State<Arc<AppState>>,
+    Path(camera_index): Path<u32>,
+) -> impl IntoResponse {
     let mut buffer = std::io::Cursor::new(Vec::new());
 
-    let image = state.image.borrow();
-    image
-        .write_to(
-            &mut buffer,
-            ImageOutputFormat::Jpeg(state.config.jpg_quality),
-        )
-        .unwrap();
+    let camera_list = state.camera_list.borrow().clone();
+
+    for camera in camera_list {
+        if camera.index.as_index().unwrap() == camera_index {
+            let image = camera.buffer.unwrap_or(ImageBuffer::new(1, 1));
+            let image_format = ImageOutputFormat::Jpeg(state.config.jpg_quality);
+
+            image.write_to(&mut buffer, image_format).unwrap();
+
+            return Response::builder()
+                .header("Content-Type", "image/jpg")
+                .body(Body::from(buffer.into_inner()))
+                .unwrap();
+        }
+    }
 
     Response::builder()
         .header("Content-Type", "image/jpg")
@@ -140,7 +136,7 @@ async fn image(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         .unwrap()
 }
 
-async fn empty_html_page(state: Arc<AppState>, inner_string: &str) -> String {
+async fn empty_html_page(inner_string: &str) -> String {
     format!(
         r###"<!DOCTYPE html>
     <html lang="en">
@@ -157,43 +153,3 @@ async fn empty_html_page(state: Arc<AppState>, inner_string: &str) -> String {
     </html>"###
     )
 }
-
-// <script>
-//     // list of URLs to revoke
-//     let urlsToRevoke = [];
-
-//     function removeImage(imageUrl) {{
-//         // console.log('Revoking URL:', imageUrl);
-//         URL.revokeObjectURL(imageUrl)
-//     }}
-
-//     // Function to update the image
-//     async function updateImage() {{
-//         try {{
-//             // Fetch the image from the server
-//             const response = await fetch('/image');
-//             const blob = await response.blob();
-
-//             // Create a URL for the blob
-//             const imageUrl = URL.createObjectURL(blob);
-
-//             // Update the src attribute of the image element
-//             document.getElementById('dynamic-image').src = imageUrl;
-
-//             // Clean up the URL after some time
-//             for (const url of urlsToRevoke) {{
-//                 removeImage(url);
-//             }}
-//             urlsToRevoke = [];
-
-//             urlsToRevoke.push(imageUrl);
-
-//         }} catch (error) {{
-//             console.error('Error fetching image:', error);
-//         }}
-//     }}
-
-//     updateImage();
-//     setInterval(updateImage, {website_ms_per_frame});
-
-//     </script>
