@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use image::{ImageBuffer, Rgb};
-use tokio::sync::{watch::Sender, Mutex};
+use tokio::sync::watch::Sender;
 
 use nokhwa::{
     pixel_format::RgbFormat,
@@ -11,17 +11,10 @@ use nokhwa::{
 use crate::AppState;
 
 #[derive(Clone)]
-pub(crate) struct Camera {
-    pub index: CameraIndex,
-    pub resolution: Resolution,
-    pub camera: Arc<Mutex<nokhwa::Camera>>,
-}
-
-#[derive(Clone)]
 pub(crate) struct CameraBuffer {
     pub camera_index: CameraIndex,
     pub buffer: Option<ImageBuffer<Rgb<u8>, Vec<u8>>>,
-    pub name: String, // Added camera name field
+    pub _name: String, // Added camera name field
 }
 
 pub async fn setup_cameras(state: Arc<AppState>, cameras_tx: Sender<Vec<CameraBuffer>>) {
@@ -66,7 +59,7 @@ pub async fn setup_cameras(state: Arc<AppState>, cameras_tx: Sender<Vec<CameraBu
 
             camera_buffer_list.push(CameraBuffer {
                 camera_index: camera_iter.index().clone(),
-                name: camera_iter.info().human_name(),
+                _name: camera_iter.info().human_name(),
                 buffer: Some(buffer),
             });
         }
