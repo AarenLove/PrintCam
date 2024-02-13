@@ -10,11 +10,12 @@ use axum::{
 use image::{ImageBuffer, ImageOutputFormat};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch::{self, Receiver};
+use webcam::CameraBuffer;
 
 mod webcam;
 
 struct AppState {
-    camera_list: Receiver<Vec<webcam::Camera>>,
+    camera_buffer_rx: Receiver<Vec<CameraBuffer>>,
     config: Configuration,
 }
 
@@ -29,7 +30,7 @@ struct Configuration {
 #[tokio::main]
 async fn main() {
     // Create a channel to send the image from the webcam to the webserver
-    let (image_tx, image_rx) = watch::channel(Vec::new());
+    let (image_list_tx, camera_list_rx) = watch::channel(Vec::new());
 
     let config_str =
         std::fs::read_to_string("config.toml").expect("Could not read config.toml file");
@@ -38,11 +39,11 @@ async fn main() {
     println!("Config: {:#?}", config);
 
     let state = Arc::new(AppState {
-        camera_list: image_rx,
+        camera_buffer_rx: camera_list_rx,
         config,
     });
 
-    tokio::spawn(webcam::setup_cameras(state.clone(), image_tx));
+    tokio::spawn(webcam::setup_cameras(state.clone(), image_list_tx));
 
     let app = axum::Router::new()
         // .nest_service("/assets", ServeDir::new("assets"))
@@ -112,15 +113,14 @@ async fn image(
     State(state): State<Arc<AppState>>,
     Path(camera_index): Path<u32>,
 ) -> impl IntoResponse {
-    let mut buffer = std::io::Cursor::new(Vec::new());
+    let camera_buffer_list = state.camera_buffer_rx.borrow().clone();
 
-    let camera_list = state.camera_list.borrow().clone();
-
-    for camera in camera_list {
-        if camera.index.as_index().unwrap() == camera_index {
-            let image = camera.buffer.unwrap_or(ImageBuffer::new(1, 1));
+    for camera_buffer in camera_buffer_list {
+        if camera_buffer.camera_index.as_index().unwrap() == camera_index {
+            let image = camera_buffer.buffer.unwrap_or(ImageBuffer::new(1, 1));
             let image_format = ImageOutputFormat::Jpeg(state.config.jpg_quality);
 
+            let mut buffer = std::io::Cursor::new(Vec::new());
             image.write_to(&mut buffer, image_format).unwrap();
 
             return Response::builder()
@@ -131,8 +131,8 @@ async fn image(
     }
 
     Response::builder()
-        .header("Content-Type", "image/jpg")
-        .body(Body::from(buffer.into_inner()))
+        .status(404)
+        .body(Body::from("Camera not found"))
         .unwrap()
 }
 
