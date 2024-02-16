@@ -21,21 +21,24 @@ pub async fn setup_cameras(state: Arc<AppState>, cameras_tx: Sender<Vec<CameraBu
     let mut camera_list = vec![];
 
     let connected_cameras = nokhwa::query(nokhwa::native_api_backend().unwrap()).unwrap();
+    let res_config = state.config.resolution.unwrap_or((1280, 720));
 
     // Print the number of connected cameras and their names
     println!("Connected Cameras: {}", connected_cameras.len());
     for camera in &connected_cameras {
-        println!("Camera {}: {}", camera.index(), camera.human_name());
+        println!(
+            "Camera {}: {} at {}p",
+            camera.index(),
+            camera.human_name(),
+            res_config.1
+        );
     }
 
     // Open the cameras and start streaming
     for camera in connected_cameras {
-        // let resolution = RequestedFormatType::HighestResolution(Resolution::new(320, 240));
-        // let resolution = RequestedFormatType::HighestResolution(Resolution::new(640, 480));
-        let resolution = RequestedFormatType::HighestResolution(Resolution::new(1280, 720));
-        // let resolution = RequestedFormatType::HighestResolution(Resolution::new(1920, 1080));
-
-        let requested_format = RequestedFormat::new::<RgbFormat>(resolution);
+        let requested_format = RequestedFormat::new::<RgbFormat>(
+            RequestedFormatType::HighestResolution(Resolution::new(res_config.0, res_config.1)),
+        );
 
         let mut camera = nokhwa::Camera::new(camera.index().clone(), requested_format).unwrap();
         camera.open_stream().unwrap();
@@ -57,6 +60,7 @@ pub async fn setup_cameras(state: Arc<AppState>, cameras_tx: Sender<Vec<CameraBu
             let camera_buffer = camera_iter.frame().unwrap();
             let buffer = camera_buffer.decode_image::<RgbFormat>().unwrap();
 
+            // Add the image to the list
             camera_buffer_list.push(CameraBuffer {
                 camera_index: camera_iter.index().clone(),
                 _name: camera_iter.info().human_name(),
@@ -64,6 +68,7 @@ pub async fn setup_cameras(state: Arc<AppState>, cameras_tx: Sender<Vec<CameraBu
             });
         }
 
+        // Send the image_list to the webserver
         cameras_tx.send(camera_buffer_list).unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(
             state.config.seconds_per_frame as u64,

@@ -1,12 +1,15 @@
 
-# 30 fps = 1080p
-# 60 fps = 720p
-camera_frame_rate = 60
+# Changing Frame Rates can change the quality of the video
+# I.E. 30 fps = 1080p and 60 fps = 720p
+
+# resolution = [854, 428]
+resolution = [1280, 720]
+# resolution = [1920, 1080]
+# resolution = [2560, 1440]
 
 website_ms_per_frame = 1000
 seconds_per_frame = 16
-
-jpg_quality = 20
+jpg_quality = 30
 
 
 # High Res 1080

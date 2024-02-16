@@ -21,10 +21,11 @@ struct AppState {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Configuration {
-    camera_frame_rate: u32,
     website_ms_per_frame: u32,
     seconds_per_frame: u32,
     jpg_quality: u8, // 0-100
+
+    resolution: Option<(u32, u32)>,
 }
 
 #[tokio::main]
@@ -36,7 +37,7 @@ async fn main() {
         std::fs::read_to_string("config.toml").expect("Could not read config.toml file");
     let config: Configuration = toml::from_str(&config_str).unwrap();
 
-    println!("Config: {:#?}", config);
+    println!("Config: {:?}", config);
 
     let state = Arc::new(AppState {
         camera_buffer_rx: camera_list_rx,
